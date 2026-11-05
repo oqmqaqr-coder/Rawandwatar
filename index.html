@@ -51,7 +51,7 @@ var KEY="waterShopV2";
 var S={products:[],fills:[],salesRev:[],purchases:[],counts:[],expenses:[],cur:"د.ل",nid:1};
 try{var sv=localStorage.getItem(KEY);if(sv){S=JSON.parse(sv)}}catch(e){}
 S.salesRev=S.salesRev||[];
-var tab="home",msg="",rsel=-1,hdate="",rmsg="",EMPTYP='<div class="box"><div class="empty">أضف أصنافك أولاً من صفحة «منتجات»</div></div>';
+var tab="home",msg="",rsel=-1,hdate="",rmsg="",wmsg="",wipeArmed=false,EMPTYP='<div class="box"><div class="empty">أضف أصنافك أولاً من صفحة «منتجات»</div></div>';
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function money(n){return (Math.round(n*100)/100)+" "+esc(S.cur)}
@@ -64,10 +64,10 @@ function report(i){
   var cu=S.counts[i],pr=S.counts[i-1],r={rows:[],fill:0,sales:0,exp:0,cogs:0,lostc:0};
   S.products.forEach(function(p){
     if(!cu.items[p.id])return;
-    var q0=(pr.items[p.id]||{}).qty||0,it=cu.items[p.id],buy=0;
-    S.purchases.forEach(function(b){if(String(b.pid)===String(p.id)&&inP(b.d,pr.d,cu.d))buy+=b.qty});
-    var lost=it.lost||0,sold=q0+buy-it.qty-lost;
-    r.rows.push({n:p.name,sold:sold,lost:lost,c:sold*p.cost});r.cogs+=sold*p.cost;r.lostc+=lost*p.cost;
+    var po=pr.items[p.id]||{},it=cu.items[p.id],q0=po.qty||0,u0=po.u!=null?po.u:p.cost,u1=it.u!=null?it.u:p.cost,bq=0,bv=0;
+    S.purchases.forEach(function(b){if(String(b.pid)===String(p.id)&&inP(b.d,pr.d,cu.d)){bq+=b.qty;bv+=b.qty*(b.c!=null?b.c:p.cost)}});
+    var lost=it.lost||0,sold=q0+bq-it.qty-lost,lc=lost*u1,sc=q0*u0+bv-it.qty*u1-lc;
+    r.rows.push({n:p.name,sold:sold,lost:lost,c:sc});r.cogs+=sc;r.lostc+=lc;
   });
   S.fills.forEach(function(f){if(inP(f.d,pr.d,cu.d))r.fill+=f.amt});
   S.salesRev.forEach(function(f){if(inP(f.d,pr.d,cu.d))r.sales+=f.amt});
@@ -111,9 +111,9 @@ function repHtml(){
 }
 function buyHtml(){
   if(!S.products.length)return EMPTYP;
-  var h='<div class="box"><b>بضاعة دخلت المحل</b><div class="g2"><select id="bp">'+S.products.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join("")+'</select><input id="bq" type="number" inputmode="numeric" placeholder="الكمية"><input id="bd" type="date" value="'+today()+'"><button class="btn" data-a="addbuy">إضافة</button></div>'+(msg?'<div class="msg">'+msg+'</div>':'')+'</div><div class="box"><b>آخر المشتريات</b>';
+  var h='<div class="box"><b>بضاعة دخلت المحل</b><div class="g2"><select id="bp">'+S.products.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join("")+'</select><input id="bq" type="number" inputmode="numeric" placeholder="الكمية"><input id="bc" type="number" inputmode="decimal" placeholder="سعر الشراء للوحدة"><input id="bd" type="date" value="'+today()+'"><button class="btn" data-a="addbuy">إضافة</button></div>'+(msg?'<div class="msg">'+msg+'</div>':'')+'</div><div class="box"><b>آخر المشتريات</b>';
   if(!S.purchases.length)h+='<div class="empty">لا توجد مشتريات</div>';
-  S.purchases.map(function(b,i){return [b,i]}).reverse().slice(0,30).forEach(function(x){var p=prod(x[0].pid);h+='<div class="row"><span>'+esc(p?p.name:"؟")+' × '+x[0].qty+'<div class="mu">'+x[0].d+'</div></span><button class="btn dg" data-a="delbuy" data-id="'+x[1]+'">حذف</button></div>'});
+  S.purchases.map(function(b,i){return [b,i]}).reverse().slice(0,30).forEach(function(x){var b=x[0],p=prod(b.pid);h+='<div class="row"><span>'+esc(p?p.name:"؟")+' × '+b.qty+(b.c!=null?' @ '+money(b.c):'')+'<div class="mu">'+b.d+'</div></span><button class="btn dg" data-a="delbuy" data-id="'+x[1]+'">حذف</button></div>'});
   return h+'</div>';
 }
 function countHtml(){
@@ -133,10 +133,35 @@ function expHtml(){
   S.expenses.map(function(x,i){return [x,i]}).reverse().slice(0,40).forEach(function(x){h+='<div class="row"><span>'+esc(x[0].name)+'<div class="mu">'+x[0].d+'</div></span><b>'+money(x[0].amt)+'</b><button class="btn dg" data-a="delexp" data-id="'+x[1]+'">حذف</button></div>'});
   return h+'</div>';
 }
+function wipeHtml(){
+  var has=false;try{has=!!localStorage.getItem("waterShopPin")}catch(e){}
+  var h='<div class="box"><b>مسح كل البيانات</b>';
+  if(!has){h+='<div class="mu">ضع رمزاً من 4 أرقام لحماية زر المسح. احفظه جيداً، فلا يمكن استرجاعه.</div><div class="g2"><input id="np1" type="password" inputmode="numeric" maxlength="4" placeholder="الرمز (4 أرقام)"><input id="np2" type="password" inputmode="numeric" maxlength="4" placeholder="أعد كتابة الرمز"><button class="btn" data-a="setpin">حفظ الرمز</button></div>'}
+  else if(!wipeArmed){h+='<div class="mu">خذ نسخة احتياطية قبل المسح. المسح نهائي.</div><div class="g2"><input id="wp" type="password" inputmode="numeric" maxlength="4" placeholder="الرمز"><button class="btn dg" data-a="wipe">مسح كل البيانات</button></div>'}
+  else{h+='<div class="msg">تأكيد نهائي: سيُحذف كل شيء ولا يمكن التراجع.</div><div class="g2"><button class="btn dg" data-a="wipeok">نعم، امسح كل شيء</button><button class="btn" data-a="wipecancel">إلغاء</button></div>'}
+  if(wmsg)h+='<div class="msg '+(wmsg.charAt(0)==="✓"?"pos":"")+'">'+wmsg+'</div>';
+  return h+'</div>';
+}
+function hashPin(pin){
+  var t="rawandwatar:"+pin;
+  if(window.crypto&&crypto.subtle&&window.TextEncoder){return crypto.subtle.digest("SHA-256",new TextEncoder().encode(t)).then(function(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return ("0"+x.toString(16)).slice(-2)}).join("")})}
+  var h=5381;for(var i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))|0;return Promise.resolve("f"+h);
+}
+function doSetPin(){
+  var a=v("np1"),b=v("np2");
+  if(!/^\d{4}$/.test(a)){wmsg="الرمز يجب أن يكون 4 أرقام";render();return}
+  if(a!==b){wmsg="الرمزان غير متطابقين";render();return}
+  hashPin(a).then(function(h){try{localStorage.setItem("waterShopPin",h);wmsg="✓ تم حفظ الرمز"}catch(e){wmsg="تعذّر حفظ الرمز"}render()});
+}
+function doWipe(){
+  var a=v("wp");
+  if(!/^\d{4}$/.test(a)){wmsg="أدخل الرمز (4 أرقام)";render();return}
+  hashPin(a).then(function(h){var ok=false;try{ok=h===localStorage.getItem("waterShopPin")}catch(e){}if(ok){wipeArmed=true;wmsg=""}else{wmsg="الرمز غير صحيح"}render()});
+}
 function prodHtml(){
-  var h='<div class="box"><b>إضافة منتج</b><div class="g2"><input id="pn" placeholder="اسم الصنف (مثال: قارورة 0.5 لتر – نوع أ)"><input id="pp" type="number" inputmode="decimal" placeholder="سعر البيع"><input id="pc" type="number" inputmode="decimal" placeholder="سعر التكلفة"><button class="btn" data-a="addprod">إضافة</button></div>'+(msg?'<div class="msg">'+msg+'</div>':'')+'</div><div class="box"><b>المنتجات</b><div class="row mu"><span style="flex:1"></span><span class="sm">البيع</span><span class="sm">التكلفة</span><span style="width:50px"></span></div>';
-  S.products.forEach(function(p){h+='<div class="row"><span style="flex:1">'+esc(p.name)+(p.price<p.cost?'<div class="msg">يُباع بأقل من التكلفة</div>':'')+'</span><input class="sm" type="number" inputmode="decimal" value="'+p.price+'" data-a="price" data-id="'+p.id+'"><input class="sm" type="number" inputmode="decimal" value="'+p.cost+'" data-a="cost" data-id="'+p.id+'"><button class="btn dg" data-a="delprod" data-id="'+p.id+'">حذف</button></div>'});
-  return h+'</div><div class="box"><b>العملة</b><input value="'+esc(S.cur)+'" data-a="cur" style="margin-top:8px"></div><div class="box"><b>استرجاع نسخة احتياطية</b><div class="mu">يستبدل كل البيانات الحالية بمحتوى الملف.</div><input type="file" accept=".json,application/json" data-a="restore" style="margin-top:8px">'+(rmsg?'<div class="msg '+(rmsg.charAt(0)==="✓"?"pos":"")+'">'+rmsg+'</div>':'')+'</div>';
+  var h='<div class="box"><b>إضافة صنف</b><div class="g2"><input id="pn" placeholder="اسم الصنف (مثال: قارورة 0.5 لتر – نوع أ)"><input id="pc" type="number" inputmode="decimal" placeholder="تكلفة الوحدة عند بداية الجرد الأول"><button class="btn" data-a="addprod">إضافة</button></div>'+(msg?'<div class="msg">'+msg+'</div>':'')+'</div><div class="box"><b>الأصناف</b><div class="mu">التكلفة هنا تُستخدم للجرد الأول فقط، وبعده تُحسب من أسعار مشترياتك.</div><div class="row mu"><span style="flex:1"></span><span class="sm">التكلفة</span><span style="width:50px"></span></div>';
+  S.products.forEach(function(p){h+='<div class="row"><span style="flex:1">'+esc(p.name)+'</span><input class="sm" type="number" inputmode="decimal" value="'+p.cost+'" data-a="cost" data-id="'+p.id+'"><button class="btn dg" data-a="delprod" data-id="'+p.id+'">حذف</button></div>'});
+  return h+'</div><div class="box"><b>العملة</b><input value="'+esc(S.cur)+'" data-a="cur" style="margin-top:8px"></div><div class="box"><b>استرجاع نسخة احتياطية</b><div class="mu">يستبدل كل البيانات الحالية بمحتوى الملف.</div><input type="file" accept=".json,application/json" data-a="restore" style="margin-top:8px">'+(rmsg?'<div class="msg '+(rmsg.charAt(0)==="✓"?"pos":"")+'">'+rmsg+'</div>':'')+'</div>'+wipeHtml();
 }
 function render(){
   drawNav();
@@ -145,8 +170,12 @@ function render(){
 function num(id){var n=parseFloat(v(id));return isNaN(n)?null:n}
 function act(a,id){
   msg="";rmsg="";
-  if(a==="go"){tab=id}
+  if(a==="go"){tab=id;wipeArmed=false;wmsg=""}
   else if(a==="backup"){try{var blob=new Blob([JSON.stringify(S)],{type:"application/json"}),u=URL.createObjectURL(blob),l=document.createElement("a");l.href=u;l.download="backup-"+today()+".json";document.body.appendChild(l);l.click();l.remove();setTimeout(function(){URL.revokeObjectURL(u)},2000);localStorage.setItem("waterShopBk",today())}catch(e){}}
+  else if(a==="setpin"){doSetPin();return}
+  else if(a==="wipe"){doWipe();return}
+  else if(a==="wipecancel"){wipeArmed=false}
+  else if(a==="wipeok"){S={products:[],fills:[],salesRev:[],purchases:[],counts:[],expenses:[],cur:S.cur||"د.ل",nid:1};hdate="";rsel=-1;wipeArmed=false;save();wmsg="✓ تم مسح كل البيانات"}
   else if(a==="addday"){
     var t=today(),d=hdate||t,fa=num("fa"),sa=num("sa"),done=0;
     function put(arr,val){if(val===null||val<0)return;var ex=arr.find(function(x){return x.d===d});if(ex){if(d<t)return;ex.amt=val}else arr.push({d:d,amt:val});done++}
@@ -154,17 +183,24 @@ function act(a,id){
     else{put(S.fills,fa);put(S.salesRev,sa);if(done){save();msg="✓ تم الحفظ"}else{msg="أدخل مبلغاً صحيحاً"}}
   }
   else if(a==="hdate"){hdate=id}
-  else if(a==="addbuy"){var q=num("bq"),d=v("bd");if(q===null||q<=0||!d){msg="أدخل الكمية والتاريخ"}else{S.purchases.push({d:d,pid:v("bp"),qty:q});save()}}
+  else if(a==="addbuy"){var q=num("bq"),c=num("bc"),d=v("bd");if(q===null||q<=0||c===null||c<0||!d){msg="أدخل الكمية وسعر الشراء والتاريخ"}else{S.purchases.push({d:d,pid:v("bp"),qty:q,c:c});save()}}
   else if(a==="delbuy"){S.purchases.splice(+id,1);save()}
   else if(a==="addexp"){var n=num("ea"),nm=v("en").trim(),d=v("ed");if(n===null||n<=0||!nm||!d){msg="أدخل النوع والمبلغ والتاريخ"}else{S.expenses.push({d:d,name:nm,amt:n});save()}}
   else if(a==="delexp"){S.expenses.splice(+id,1);save()}
   else if(a==="savecount"){
-    var d=v("cd"),items={},ok=!!d;
-    S.products.forEach(function(p){var q=num("cq"+p.id),l=num("cl"+p.id);if(q===null||q<0)ok=false;else items[p.id]={qty:q,lost:l||0}});
-    if(!ok){msg="أدخل الكمية لكل المنتجات وتاريخ الجرد"}else{S.counts=S.counts.filter(function(c){return c.d!==d});S.counts.push({d:d,items:items});S.counts.sort(function(a,b){return a.d<b.d?-1:1});rsel=-1;save();tab="rep";msg=""}
+    var d=v("cd"),items={},ok=!!d,prev=null;
+    S.counts.forEach(function(c){if(c.d<d)prev=c});
+    S.products.forEach(function(p){
+      var q=num("cq"+p.id),l=num("cl"+p.id);
+      if(q===null||q<0){ok=false;return}
+      var best=null;S.purchases.forEach(function(b){if(String(b.pid)===String(p.id)&&b.d<=d&&b.c!=null){if(!best||b.d>=best.d)best=b}});
+      var u=best?best.c:(prev&&prev.items[p.id]&&prev.items[p.id].u!=null?prev.items[p.id].u:p.cost);
+      items[p.id]={qty:q,lost:l||0,u:u};
+    });
+    if(!ok){msg="أدخل الكمية لكل الأصناف وتاريخ الجرد"}else{S.counts=S.counts.filter(function(c){return c.d!==d});S.counts.push({d:d,items:items});S.counts.sort(function(a,b){return a.d<b.d?-1:1});rsel=-1;save();tab="rep";msg=""}
   }
   else if(a==="delcount"){S.counts.splice(+id,1);rsel=-1;save()}
-  else if(a==="addprod"){var n=v("pn").trim(),p=num("pp"),c=num("pc");if(!n||p===null||c===null||p<0||c<0){msg="أدخل الاسم والسعر والتكلفة"}else{S.products.push({id:S.nid++,name:n,price:p,cost:c});save()}}
+  else if(a==="addprod"){var n=v("pn").trim(),c=num("pc");if(!n||c===null||c<0){msg="أدخل اسم الصنف والتكلفة"}else{S.products.push({id:S.nid++,name:n,cost:c});save()}}
   else if(a==="delprod"){S.products=S.products.filter(function(p){return String(p.id)!==id});save()}
   render();
 }
@@ -175,7 +211,7 @@ document.addEventListener("click",function(e){
 document.addEventListener("input",function(e){var el=e.target;if(el.getAttribute&&el.getAttribute("data-a")==="amt"){var t=document.getElementById("tt");if(t)t.textContent=money((parseFloat(v("fa"))||0)+(parseFloat(v("sa"))||0))}});
 document.addEventListener("change",function(e){
   var el=e.target,a=el.getAttribute&&el.getAttribute("data-a"),id=el.getAttribute&&el.getAttribute("data-id");
-  if(a==="price"||a==="cost"){var p=prod(id),n=parseFloat(el.value);if(p&&!isNaN(n)&&n>=0){p[a]=n;save();render()}}
+  if(a==="cost"){var p=prod(id),n=parseFloat(el.value);if(p&&!isNaN(n)&&n>=0){p[a]=n;save();render()}}
   else if(a==="cur"){S.cur=el.value||"د.ل";save()}
   else if(a==="rsel"){rsel=+el.value;render()}
   else if(a==="hdate"){hdate=el.value||today();msg="";render()}
