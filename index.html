@@ -169,10 +169,19 @@ function render(){
   document.getElementById("app").innerHTML={home:homeHtml,buy:buyHtml,count:countHtml,exp:expHtml,prod:prodHtml,rep:repHtml}[tab]();
 }
 function num(id){var n=parseFloat(v(id));return isNaN(n)?null:n}
+function doBackup(){
+  var json=JSON.stringify(S),name="backup-"+today()+".json",C=window.Capacitor,P=C&&C.Plugins;
+  function mark(){try{localStorage.setItem("waterShopBk",today())}catch(e){}render()}
+  if(C&&C.isNativePlatform&&C.isNativePlatform()&&P&&P.Filesystem&&P.Share){
+    P.Filesystem.writeFile({path:name,data:json,directory:"CACHE",encoding:"utf8"}).then(function(r){return P.Share.share({title:"نسخة احتياطية",url:r.uri,dialogTitle:"حفظ النسخة الاحتياطية"})}).then(mark).catch(function(){render()});
+    return;
+  }
+  try{var blob=new Blob([json],{type:"application/json"}),u=URL.createObjectURL(blob),l=document.createElement("a");l.href=u;l.download=name;document.body.appendChild(l);l.click();l.remove();setTimeout(function(){URL.revokeObjectURL(u)},2000);mark()}catch(e){}
+}
 function act(a,id){
   msg="";rmsg="";
   if(a==="go"){tab=id;wipeArmed=false;wmsg=""}
-  else if(a==="backup"){try{var blob=new Blob([JSON.stringify(S)],{type:"application/json"}),u=URL.createObjectURL(blob),l=document.createElement("a");l.href=u;l.download="backup-"+today()+".json";document.body.appendChild(l);l.click();l.remove();setTimeout(function(){URL.revokeObjectURL(u)},2000);localStorage.setItem("waterShopBk",today())}catch(e){}}
+  else if(a==="backup"){doBackup();return}
   else if(a==="setpin"){doSetPin();return}
   else if(a==="wipe"){doWipe();return}
   else if(a==="wipecancel"){wipeArmed=false}
@@ -219,7 +228,7 @@ document.addEventListener("change",function(e){
   else if(a==="restore"){var f=el.files&&el.files[0];if(!f)return;var fr=new FileReader();fr.onload=function(){try{var d=JSON.parse(fr.result);if(!d||!Array.isArray(d.products)||!Array.isArray(d.fills)||!Array.isArray(d.counts))throw 0;S=d;S.salesRev=S.salesRev||[];S.purchases=S.purchases||[];S.expenses=S.expenses||[];S.cur=S.cur||"د.ل";S.nid=S.nid||1;save();rmsg="✓ تم الاسترجاع"}catch(e){rmsg="الملف غير صالح"}render()};fr.readAsText(f)}
 });
 render();
-if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});
+if("serviceWorker" in navigator&&!window.Capacitor)navigator.serviceWorker.register("sw.js").catch(function(){});
 </script>
 </body>
 </html>
